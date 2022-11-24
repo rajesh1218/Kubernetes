@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+ name: cronjob
+spec:
+ schedule: "*/3 * * * *"
+ jobTemplate:
+  spec:
+   template:
+    spec:
+     containers:
+     - name: cronpod
+       image: quay.io/gauravkumar9130/busybox
+       command: ["/bin/sh"]
+       args: ["-c","date; echo hello from busybox"]
+     restartPolicy: OnFailure

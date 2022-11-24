@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: green-version
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   vesrion: green
+ template:
+  metadata:
+   labels:
+    vesrion: green
+  spec:
+   containers:
+   - name: green-container
+     image: quay.io/gauravkumar9130/production:v2

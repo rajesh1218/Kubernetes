@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-dns
+spec:
+ containers:
+ - name: test
+   image: quay.io/gauravkumar9130/nginxdemo
+ dnsPolicy: "None" #dns setttings are not inherited
+ dnsConfig:
+  nameservers:
+  - 172.25.250.254
+  searches:
+  - koenig-cloud.com
+  options:
+  - name: ndots
+    value: "5"                                                                                                                            
+  - name: edns0

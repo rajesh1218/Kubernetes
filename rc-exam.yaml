@@ -1,0 +1,17 @@
+#create the replication cintroller
+apiVersion: v1
+kind: ReplicationController 
+metadata:
+ name: rc-example
+spec:
+ replicas: 3 #number of pods needed
+ template: #pod specification
+  metadata:
+   name: web  #pod name
+   labels:    #pod label
+    dep: prod
+  spec:
+   containers: #container properties
+   - name: c1
+     image: quay.io/gauravkumar9130/mywebapp
+     imagePullPolicy: IfNotPresent

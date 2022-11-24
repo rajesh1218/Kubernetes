@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: blue-version
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   vesrion: blue
+ template:
+  metadata:
+   labels:
+    vesrion: blue
+  spec:
+   containers:
+   - name: blue-container
+     image: quay.io/gauravkumar9130/production:v1

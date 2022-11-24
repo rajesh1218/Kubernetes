@@ -1,0 +1,12 @@
+#adding label to the pod
+apiVersion: v1
+kind: Pod
+metadata:  
+ name: podwithlabel
+ labels:
+  dep: dev #key: value
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+   imagePullPolicy: IfNotPresent

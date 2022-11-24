@@ -1,0 +1,9 @@
+#creating basic pod
+apiVersion: v1
+kind: Pod
+metadata:
+ name: test-pod
+spec:
+ containers:
+ - name: c1
+   image: quay.io/bedrock/ubuntu

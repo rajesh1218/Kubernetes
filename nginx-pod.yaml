@@ -1,0 +1,10 @@
+#creating pod with nginx image
+apiVersion: v1
+kind: Pod
+metadata:  
+ name: nginx-pod
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+   imagePullPolicy: IfNotPresent

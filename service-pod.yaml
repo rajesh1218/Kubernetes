@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+ name: rs-webapp
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   app: webrs
+ template:
+  metadata:
+   labels:                                                                                                                                
+    app: webrs
+  spec:
+   containers:
+   - name: webcontainer
+     image: quay.io/gauravkumar9130/mywebapp

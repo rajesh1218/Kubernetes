@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+ name: nodeportsvc
+spec:
+ type: NodePort
+ ports:
+ - targetPort: 80 #main port of container
+   port: 8080 #alternate port of container -> redirects to targetPort
+   nodePort: 30005 #port exposed on worker node                                                                                           
+ selector:
+  app: webrs

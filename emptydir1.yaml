@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-empty1
+spec:
+ containers:
+ - name: emptydir1
+   image: quay.io/gauravkumar9130/nginxdemo
+   volumeMounts:
+   - name: temp1
+     mountPath: /raj123
+ volumes:
+ - name: temp1
+   emptyDir: {}
