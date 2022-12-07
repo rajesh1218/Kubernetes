@@ -1,0 +1,1623 @@
+Kubernetes setup
+Step 1: On master, configure /etc/hosts as per IP of your machines
+172.25.231.97 master
+172.25.230.24 worker1
+172.25.232.187 worker2
+
+Verify using ping worker1, ping worker2.
+
+Step 2:- copy hosts file to worker machines (password is redhat)
+scp -r /etc/hosts worker1:/etc
+scp -r /etc/hosts worker2:/etc
+
+Step 3: ssh into worker1, worker2 (password is redhat)
+on master, open 2 terminal tabs and run
+ssh root@worker1
+ssh root@worker2
+
+Step 4: turn of swap on all machines
+swapoff -a
+=unixso
+Step 5: install packages on all mach
+yum install crio kubelet kubectl kubeadm -y
+
+Step 6: start crio and kubelet on all machines
+systemctl enable crio kubelet --now
+
+step 7: setup master node
+kubeadm init --pod-network-cidr=10.244.0.0/16 --cri-socket=unix:///var/run/crio/crio.sock
+
+step 8: start cluster on master node
+run 3 commands on master node as per your output
+
+step 9: add worker node to cluster
+run 1 command on worker node as per your output
+
+step 10: verify cluster in master node
+[root@master ~]# kubectl get nodes
+NAME      STATUS   ROLES           AGE   VERSION
+master    Ready    control-plane   12m   v1.25.4
+worker1   Ready    <none>          83s   v1.25.4
+worker2   Ready    <none>          80s   v1.25.4
+
+step 11: download calico on master
+wget http://raw.githubusercontent.com/projectcalico/calico/v3.24.0/manifests/calico.yaml
+
+step 12: change image registry on master
+open calico.yaml and type Esc :%s/docker.io/quay.io/g and hit enter. Save the file
+kubectl apply -f calico.yaml
+----------------------------------
+Day 7
+vim settings update
+
+vim ~/.vimrc
+set cursorline cursorcolumn
+pod creation
+firstpod.yaml
+apiVersion: v1i
+kind: Pod
+metadata:
+ name: test-pod
+spec:
+ containers:
+ - name: c1
+   image: qc
+   
+[root@master scripts]# kubectl apply -f firstpod.yaml 
+pod/test-pod created
+-----
+test.yaml
+apiVersion: v1
+kind: Pod
+metadata:  
+ name: nginx-pod
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+   imagePullPolicy: IfNotPresent #Always,Never,IfNotPresent
+--------
+commands
+kubectl apply -f file.yaml
+kubectl get pods
+kubectl delete -f file.yaml
+kubectl delete pod/podname
+kubectl describe pod/podname
+-------
+podwithlabel.yaml
+apiVersion: v1        
+kind: Pod             
+metadata:             
+ name: podwithlabel   
+ labels:              
+  dep: dev #key: value                                                                                                                    
+spec:                 
+ containers:          
+ - name: c1           
+   image: quay.io/gauravkumar9130/mywebapp
+   imagePullPolicy: IfNotPresent #Always,Never,IfNotPresent
+   
+[root@master scripts]# kubectl apply -f podwithlabel.yaml 
+pod/podwithlabel created
+[root@master scripts]# kubectl get pods --show-labels
+NAME           READY   STATUS             RESTARTS         AGE   LABELS
+[root@master scripts]# kubectl get pods --show-labels
+nginx-pod      1/1     Running            0                13m   <none>
+podwithlabel   1/1     Running            0                13s   dep=dev
+test-pod       0/1     CrashLoopBackOff   11 (2m48s ago)   34m   <none>
+
+label
+[root@master scripts]# kubectl label --overwrite pods nginx-pod dep=test
+pod/nginx-pod labeled
+[root@master scripts]# kubectl get pods --show-labels
+NAME           READY   STATUS             RESTARTS       AGE    LABELS
+nginx-pod      1/1     Running            0              22m    dep=test
+podwithlabel   1/1     Running            0              9m8s   dep=dev
+test-pod       0/1     CrashLoopBackOff   13 (86s ago)   43m    <none>
+
+selector
+equity
+[root@master scripts]# kubectl get pods --selector dep=dev
+NAME           READY   STATUS    RESTARTS   AGE
+podwithlabel   1/1     Running   0          37m
+set based
+[root@master scripts]# kubectl get pods --selector 'dep in (dev,test,prod)'
+NAME           READY   STATUS    RESTARTS   AGE
+nginx-pod      1/1     Running   0          52m
+podwithlabel   1/1     Running   0          38m
+
+-----
+Replication controller
+apiVersion: v1
+kind: ReplicationController 
+metadata:
+ name: rc-example
+spec:
+ replicas: 3 #number of pods needed
+ template: #pod specification
+  metadata:
+   name: web  #pod name
+   labels:    #pod label
+    dep: prod
+  spec:
+   containers: #container properties
+   - name: c1
+     image: quay.io/gauravkumar9130/mywebapp
+     imagePullPolicy: IfNotPresent
+
+[root@master scripts]# kubectl get pods --selector dep=prod
+NAME               READY   STATUS    RESTARTS   AGE
+rc-example-4sq68   1/1     Running   0          55s
+rc-example-bj46q   1/1     Running   0          55s
+rc-example-bp6lf   1/1     Running   0          55s
+[root@master scripts]# kubectl delete pod/rc-example-4sq68
+pod "rc-example-4sq68" deleted
+[root@master scripts]# kubectl get pods --selector dep=prod
+NAME               READY   STATUS    RESTARTS   AGE
+rc-example-bj46q   1/1     Running   0          2m9s
+rc-example-bp6lf   1/1     Running   0          2m9s
+rc-example-rxxtj   1/1     Running   0          37s
+
+replicaset
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+ name: rs-example
+spec:
+ replicas: 3
+ selector: #condition for selector
+  matchExpressions:
+  - key: dep
+    operator: In
+    values:
+    - set1
+    - set2
+ template:
+  metadata:
+   name: web
+   labels:
+    dep: set1
+  spec:
+   containers: 
+   - name: c1
+     image: quay.io/gauravkumar9130/mywebapp
+     
+[root@master scripts]# kubectl apply -f rs-example.yml 
+replicaset.apps/rs-example created
+[root@master scripts]# kubectl get pods --selector 'dep=set1'
+NAME               READY   STATUS              RESTARTS   AGE
+rs-example-mxh7d   1/1     Running             0          16s
+rs-example-pk6lf   1/1     Running             0          16s
+rs-example-qtbj7   0/1     ContainerCreating   0          16s
+------------------------
+[root@master scripts]# kubectl get pods --selector 'dep in (set1,set2)' -o wide
+NAME               READY   STATUS    RESTARTS   AGE   IP               NODE      NOMINATED NODE   READINESS GATES
+rs-example-mxh7d   1/1     Running   0          14m   10.244.235.133   worker1   <none>           <none>
+rs-example-pk6lf   1/1     Running   0          14m   10.244.189.73    worker2   <none>           <none>
+rs-example-qtbj7   1/1     Running   0          14m   10.244.235.134   worker1   <none>           <none>
+
+-------
+service-pod.yaml
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+ name: rs-webapp
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   app: webrs
+ template:
+  metadata:
+   labels:                                                                                                                                
+    app: webrs
+  spec:
+   
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+ name: rs-webapp
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   app: webrs
+ template:
+  metadata:
+    labels:                                                                                                                                
+    app: webrs
+  spec:
+clusterip.yaml
+apiVersion: v1
+kind: Service
+metadata:
+ name: clustersvc
+spec:
+ type: ClusterIP
+ ports:
+ - targetPort: 80 #port of container
+   port: 5000 #port for accessing with clusterIP                                                                                          
+ selector:
+  app: webrs
+
+kubectl apply both files.
+curl clusterip:port on worker node
+-------------------------
+nodeport
+apiVersion: v1
+kind: Service
+metadata:
+ name: nodeportsvc
+spec:
+ type: NodePort
+ ports:
+ - targetPort: 80 #main port of container
+   port: 8080 #alternate port of container -> redirects to targetPort
+   nodePort: 30005 #port exposed on worker node                                                                                           
+ selector:
+  app: webrs
+
+kubectl apply -f <filename>
+curl worker1:nodeport on worker1
+
+loadbalancer.yaml
+apiVersion: v1
+kind: Service
+metadata:
+ name: lbsvc
+spec:
+ type: LoadBalancer
+ ports:
+ - targetPort: 80 #pod port
+   port: 5000
+ selector:
+  app: webrs
+
+[root@master scripts]# kubectl apply -f loadbalancer.yaml --dry-run
+W1116 20:05:17.090071    8663 helpers.go:663] --dry-run is deprecated and can be replaced with --dry-run=client.
+service/lbsvc created (dry run)
+[root@master scripts]# kubectl get svc
+NAME          TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)          AGE
+clustersvc    ClusterIP   10.96.2.65      <none>        5000/TCP         21h
+kubernetes    ClusterIP   10.96.0.1       <none>        443/TCP          45h
+nodeportsvc   NodePort    10.106.193.41   <none>        8080:30005/TCP   20h
+[root@master scripts]# kubectl apply -f loadbalancer.yaml
+service/lbsvc created
+[root@master scripts]# et serkubectl gvice
+NAME          TYPE           CLUSTER-IP       EXTERNAL-IP   PORT(S)          AGE
+clustersvc    ClusterIP      10.96.2.65       <none>        5000/TCP         21h
+kubernetes    ClusterIP      10.96.0.1        <none>        443/TCP          45h
+lbsvc         LoadBalancer   10.110.240.247   <pending>     5000:32595/TCP   11s
+nodeportsvc   NodePort       10.106.193.41    <none>        8080:30005/TCP   20h
+
+---------------------
+schedule.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: worker1-pod
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+ nodeName: worker1
+
+[root@master scripts]# kubectl apply -f schedule.yaml 
+pod/worker1-pod created
+[root@master scripts]# kubectl get pod/worker1-pod -o wide
+NAME          READY   STATUS    RESTARTS   AGE   IP               NODE      NOMINATED NODE   READINESS GATES
+worker1-pod   1/1     Running   0          13s   10.244.235.137   worker1   <none>           <none>
+
+[root@master scripts]#kubectl taint nodes worker1 app=tester:NoSchedule
+node/worker1 tainted
+
+nodetaint.yaml
+apiVersion: v1
+kind: Pod
+metadata: 
+ name: worker1-pod-taint
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+ tolerations:
+ - key: "app"
+   operator: "Equal"
+   value: "tester"
+   effect: "NoSchedule" 
+
+[root@master scripts]# kubectl apply -f nodetaint.yaml 
+pod/worker1-pod-taint created
+[root@master scripts]# kubectl get pod/worker1-pod-taint -o wide
+NAME                READY   STATUS    RESTARTS   AGE   IP               NODE      NOMINATED NODE   READINESS GATES
+worker1-pod-taint   1/1     Running   0          16s   10.244.235.138   worker1   <none>           <none>
+---------------------
+---------
+node selector
+[root@master scripts]# kubectl taint nodes worker1 app-
+node/worker1 untainted
+[root@master scripts]# kubectl label node worker2 size=medium
+node/worker2 labeled
+[root@master scripts]# vim nodeselector.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: worker1-pod-selector
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+ nodeSelector:
+  size: medium
+  
+[root@master scripts]# kubectl apply -f nodeselector.yaml 
+pod/worker1-pod-selector created
+[root@master scripts]# kubectl get pod/worker1-pod-selector -o wide
+NAME                   READY   STATUS    RESTARTS   AGE   IP              NODE      NOMINATED NODE   READINESS GATES
+worker1-pod-selector   1/1     Running   0          16s   10.244.189.77   worker2   <none>           <none>
+-----------
+node affinity
+1.requiredDuringScheduling - label is must for node else pod won't create here
+2.preferredDuringScheduling - label is optional for node.
+3.requiredDuringExecution - label is must for node else pod won't run here (pod leaves the node if label not present)
+4.ignoredDuringExecution - label is optional for node. ( pod stays in the node )
+----
+---------
+node afiinity
+[root@master scripts]# kubectl label node worker2 size=medium
+node/worker2 labeled
+[root@master scripts]# vim nodeaffinity.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: nodeaffinity-pod
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/mywebapp
+ affinity:
+  nodeAffinity:
+   requiredDuringSchedulingIgnoredDuringExecution:
+    nodeSelectorTerms:
+    - matchExpressions:
+      - key: "size"
+        operator: "In"
+        values:
+        - "medium"
+
+  
+[root@master scripts]# kubectl apply -f nodeaffinity.yaml 
+-----------
+---------
+deployment
+deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: deployment-example
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   app: prodv1
+ template:
+  metadata:
+   labels:
+    app: prodv1
+  spec:
+   containers:
+   - name: web
+     image: quay.io/gauravkumar9130/production:v1
+     
+clusteripdep.yaml
+apiVersion: v1
+kind: Service
+metadata:
+ name: clusterdep
+spec:
+ type: ClusterIP
+ ports:
+ - targetPort: 80
+   port: 5000
+ selector: 
+  app: prodv1
+  
+[root@master scripts]# kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v2 --record
+Flag --record has been deprecated, --record will be removed in the future
+deployment.apps/deployment-example image updated
+[root@master scripts]# kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v3 --record
+Flag --record has been deprecated, --record will be removed in the future
+deployment.apps/deployment-example image updated
+[root@master scripts]# kubectl rollout history deployment/deployment-example
+deployment.apps/deployment-example 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v2 --record=true
+3         kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v3 --record=true
+
+[root@master scripts]# kubectl rollout undo deployment/deployment-example
+deployment.apps/deployment-example rolled back
+[root@master scripts]# kubectl rollout history deployment/deployment-example
+deployment.apps/deployment-example 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v2 --record=true
+5         kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v3 --record=true
+6         kubectl set image deployment/deployment-example web=quay.io/gauravkumar9130/production:v4 --record=true
+-----------------------------
+Exercise
+Create a pod with image quay.io/gauravkumar9130/production:v2 as follows
+	1. The pod should be scheduled on node 2 only. 
+	2. Node 2 should have label before it accepts pod
+Create a deployment with image quay.io/gauravkumar9130/production:v1 as follows
+	1. There must be atleast 4 replicas of pod at anytime
+	2.  Administrator should be able to upgrade from v1 to v2 easily via command line
+-------------------
+Day 9
+blue-green deployment
+blue.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: blue-version
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   version: blue
+ template:
+  metadata:
+   labels:
+    version: blue
+  spec:
+   containers:
+   - name: blue-container
+     image: quay.io/gauravkumar9130/production:v1
+
+blue-green-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+ name: bluegreenservice
+spec:
+ type: ClusterIP
+ ports:
+ - targetPort: 80 #port of container
+   port: 80 #port for accessing with clusterIP
+ selector:
+  version: blue
+  
+green.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: green-version
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   version: green
+ template:
+  metadata:
+   labels:
+    version: green
+  spec:
+   containers:
+   - name: green-container
+     image: quay.io/gauravkumar9130/production:v2
+greenservice.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+ name: green-version
+spec:
+ replicas: 5
+ selector:
+  matchLabels:
+   version: green
+ template:
+  metadata:
+   labels:
+    version: green
+  spec:
+   containers:
+   - name: green-container
+     image: quay.io/gauravkumar9130/production:v2
+  --------
+  environment variables
+  plainkey.yaml
+  apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-plainkey
+spec:
+ containers:
+ - name: mysql
+   image: quay.io/gauravkumar9130/mysql
+   env:
+   - name: MYSQL_USER
+     value: sai
+   - name: MYSQL_PASSWORD
+     value: gokul123
+   - name: MYSQL_ROOT_PASSWORD
+     value: root123
+
+kubectl exec -it pod-plainkey -- bash
+root@pod-plainkey:/# mysql -usai -p
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 15
+Server version: 8.0.22 MySQL Community Server - GPL
+
+Copyright (c) 2000, 2020, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> exit
+Bye
+root@pod-plainkey:/#
+----------------------
+------
+configmap
+configmapdata.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+ name: db-credentials
+data:
+ MYSQL_USER: sai
+ MYSQL_PASSWORD: sai123
+ MYSQL_ROOT_PASSWORD: root123
+
+pod-configmap.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-configmap
+spec:
+ containers:
+ - name: mysql
+   image: quay.io/gauravkumar9130/mysql
+   envFrom:
+   - configMapRef:
+      name: db-credentials
+      
+[root@master scripts]# kubectl exec -it pod-configmap -- bash
+root@pod-configmap:/# mysql -usai -p
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 8
+Server version: 8.0.22 MySQL Community Server - GPL
+
+Copyright (c) 2000, 2020, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> exit
+Bye
+root@pod-configmap:/# exit
+exit
+
+-------
+------
+secret
+[root@master scripts]# echo -n "sai" | base64
+c2Fp
+[root@master scripts]# echo -n "sai123" | base64
+c2FpMTIz
+[root@master scripts]# echo -n "root123" | base64
+cm9vdDEyMw==
+
+secretdata.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+ name: db-credentials
+data:
+ MYSQL_USER: c2Fp
+ MYSQL_PASSWORD: c2FpMTIz
+ MYSQL_ROOT_PASSWORD: cm9vdDEyMw==
+
+pod-secret.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-secret
+spec:
+ containers:
+ - name: mysql
+   image: quay.io/gauravkumar9130/mysql
+   envFrom:
+   - secretRef:
+      name: db-credentials
+      
+[root@master scripts]# kubectl exec -it pod-secret -- bash
+root@pod-secret:/# mysql -usai -p
+Enter password: 
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 8
+Server version: 8.0.22 MySQL Community Server - GPL
+
+Copyright (c) 2000, 2020, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> exit
+Bye
+root@pod-secret:/# exit
+exit
+-------------------
+-------------
+environment variable as volume
+env-vol-data.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+ name: app-config
+data:
+ name: sai
+ password: redhat  
+
+config-vol.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: config-pod
+spec:
+ containers:
+ - name: config
+   image: quay.io/gauravkumar9130/nginxdemo
+   volumeMounts:
+   - name: config-vol
+     mountPath: /data
+ volumes:                         
+ - name: config-vol               
+   configMap:         #secret     if you are using secret
+    name: app-config  #secretName   if you are using secret
+-------------
+emptydir
+emptydir.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-emptydir
+spec:
+ containers:
+ - name: emptydir
+   image: quay.io/gauravkumar9130/nginxdemo
+   volumeMounts:
+   - name: temporary
+     mountPath: /data
+ volumes:
+ - name: temporary
+   emptyDir: {}
+--------------
+PersistentVolume
+pv.yml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+ name: pv1
+spec:
+ storageClassName: host
+ accessModes:
+ #ReadWriteOnce - only one node can do readwrite
+ #ReadWriteMany - multiple nodes can do readwrite
+ #ReadOnlyMany - read only volume
+ - ReadWriteMany
+ capacity:
+  storage: 2Gi
+ hostPath:
+  path: /myvoldata
+  ------------------
+  Persistent Volume Claim
+  pvc.yaml
+  apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+ name: pvc1
+spec:
+ storageClassName: host
+ accessModes:
+ - ReadWriteMany
+ resources:
+  requests:
+   storage: "1Gi"
+   -------------------
+   pod-pvc.yaml
+   apiVersion: v1
+kind: Pod
+metadata:
+ name: podwithpvc
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/nginxdemo
+   volumeMounts:
+   - name: myvol
+     mountPath: /mycontainerdata
+ volumes:
+ - name: myvol
+   persistentVolumeClaim:
+    claimName: pvc1 
+
+[root@master scripts]# kubectl create -f pod-pvc.yml 
+pod/podwithpvc created
+[root@master scripts]# kubectl get pod/podwithpvc
+NAME         READY   STATUS    RESTARTS   AGE
+podwithpvc   1/1     Running   0          21s
+[root@master scripts]# kubectl exec -it podwithpvc -- sh
+/ # ls
+bin              home             mnt              root             srv              usr
+dev              lib              mycontainerdata  run              sys              var
+etc              media            proc             sbin             tmp
+/ # cd mycontainerdata/
+/mycontainerdata # touch sample1.txt sample2.txt
+/mycontainerdata # ls
+sample1.txt  sample2.txt
+/mycontainerdata # exit
+----------------
+kubectl get all -n kube-system
+kubectl api-resources --namespaced=true
+kubectl api-resources --namespaced=false
+kubectl get namespace
+kubectl get pods -A
+----------------
+Day 10
+ServiceAccount
+serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+ name: test-serviceaccount
+ namespace: default  
+ 
+ pod-sa.yaml
+ apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-sa
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/nginxdemo
+ serviceAccountName: test-serviceaccount
+ 
+ [root@master ~]# kubectl describe pod/pod-sa | grep -i 'service'
+Service Account:  test-serviceaccount
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-gptj8 (ro)
+
+User creation
+[root@master ~]# git clone https://github.com/gauravkumar9130/kube-user
+Cloning into 'kube-user'...
+remote: Enumerating objects: 3, done.
+remote: Counting objects: 100% (3/3), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 3 (delta 0), reused 3 (delta 0), pack-reused 0
+Unpacking objects: 100% (3/3), done.
+[root@master ~]# ls
+anaconda-ks.cfg  calico.yaml  Dockerfile  Downloads   initial-setup-ks.cfg  Music     Public   service.sh  testing
+binddir          Desktop      Documents   index.html  kube-user             Pictures  scripts  Templates   Videos
+[root@master ~]# cd kube-user/
+[root@master kube-user]# ls
+user_script.sh
+
+[root@master kube-user]# chmod 700 user_script.sh 
+
+
+[root@master kube-user]# ./user_script.sh 
+please type namespace
+test-ns
+namespace/test-ns created
+please type username
+testuser
+please type testuser password
+testuser
+Changing password for user testuser.
+passwd: all authentication tokens updated successfully.
+------------------------------Generating Certificates----------------------------------------------
+Generating RSA private key, 2048 bit long modulus
+..............+++
+....................+++
+e is 65537 (0x10001)
+‘/etc/kubernetes/pki/ca.crt’ -> ‘/root/kube-user/ca.crt’
+‘/etc/kubernetes/pki/ca.key’ -> ‘/root/kube-user/ca.key’
+Signature ok
+subject=/CN=testuser/O=test-ns
+Getting CA Private Key
+---------------------------------Creating kubeconfig File--------------------------------
+Cluster "kubernetes" set.
+------------------------------------ Add user in Kube Config File-----------------------------------
+User "testuser" set.
+Context "testuser-kubernetes" created.
+-------------------- Copying Files --------------------------
+‘/root/kube-user/ca.crt’ -> ‘/home/testuser/.kube/ca.crt’
+‘/root/kube-user/ca.key’ -> ‘/home/testuser/.kube/ca.key’
+‘/root/kube-user/ca.srl’ -> ‘/home/testuser/.kube/ca.srl’
+‘/root/kube-user/config’ -> ‘/home/testuser/.kube/config’
+‘/root/kube-user/testuser.crt’ -> ‘/home/testuser/.kube/testuser.crt’
+‘/root/kube-user/testuser.csr’ -> ‘/home/testuser/.kube/testuser.csr’
+‘/root/kube-user/testuser.key’ -> ‘/home/testuser/.kube/testuser.key’
+‘/root/kube-user/user_script.sh’ -> ‘/home/testuser/.kube/user_script.sh’
+
+Role and rolebinding
+[root@master scripts]# kubectl create role testuserrole --verb=create,get,list --resource=pods,services -n test-ns
+role.rbac.authorization.k8s.io/testuserrole created
+ 
+[root@master scripts]# kubectl create rolebinding testrolebind --role=testuserrole --user=testuser -n test-ns
+rolebinding.rbac.authorization.k8s.io/testrolebind created
+
+[root@master scripts]# kubectl create rolebinding pvbinding --rrole=pvrole --serviceaccount=namespace:saname
+
+verify role and rolebinding permission
+[testuser@master ~]$ kubectl auth can-i delete deployments
+yes
+[testuser@master ~]$ kubectl auth can-i delete statefulset
+no
+------
+rules:
+- apiGroups:
+  - ""
+  - apps
+  resources:
+  - pods
+  - services
+  - deployments
+  - replicasets
+  verbs:
+  - create
+  - get
+  - list
+  - exec
+  - watch
+  - update
+  - delete
+-----
+Clusterrole and clusterrolebinding
+[root@master scripts]# kubectl create clusterrole pvrole --verb=get,list --resource=persistentvolumes
+clusterrole.rbac.authorization.k8s.io/pvrole created
+
+[root@master scripts]# kubectl create clusterrolebinding pvbinding --clusterrole=pvrole --user=testuser
+clusterrolebinding.rbac.authorization.k8s.io/pvbinding created
+
+[root@master scripts]# kubectl create clusterrolebinding pvbinding --clusterrole=pvrole --serviceaccount=namespace:saname
+---------
+SecurityContext
+pod-security.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-securitycontext
+spec: 
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/nginxdemo
+   securityContext:
+    capabilities:
+     add: ["NET_RAW"]  
+     
+[root@worker1 ~]# crictl inspect b66818dbef9cba54cbd82cfdb3c8860f1055c7d81d94d4b41f0b8c938de9f677 | grep -A 15 capabilities
+        "capabilities": {
+          "bounding": [
+            "CAP_NET_RAW",
+            "CAP_CHOWN",
+            "CAP_DAC_OVERRIDE",
+            "CAP_FSETID",
+            "CAP_FOWNER",
+            "CAP_SETGID",
+            "CAP_SETUID",
+            "CAP_SETPCAP",
+            "CAP_NET_BIND_SERVICE",
+            "CAP_KILL"
+          ],
+          "effective": [
+            "CAP_NET_RAW",
+            "CAP_CHOWN",
+----------------
+logging
+[root@master scripts]# kubectl logs worker1-pod
+ This is a sample web application that displays a colored background. 
+ A color can be specified in two ways. 
+
+ 1. As a command line argument with --color as the argument. Accepts one of red,green,blue,blue2,pink,darkblue 
+ 2. As an Environment variable APP_COLOR. Accepts one of red,green,blue,blue2,pink,darkblue 
+ 3. If none of the above then a random color is picked from the above list. 
+ Note: Command line argument precedes over environment variable.
+
+
+No command line argument or environment variable. Picking a Random Color =red
+ * Serving Flask app "app" (lazy loading)
+ * Environment: production
+   WARNING: Do not use the development server in a production environment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://0.0.0.0:80/ (Press CTRL+C to quit)
+
+[root@master scripts]# kubectl logs worker1-pod -c c1
+ This is a sample web application that displays a colored background. 
+ A color can be specified in two ways. 
+
+ 1. As a command line argument with --color as the argument. Accepts one of red,green,blue,blue2,pink,darkblue 
+ 2. As an Environment variable APP_COLOR. Accepts one of red,green,blue,blue2,pink,darkblue 
+ 3. If none of the above then a random color is picked from the above list. 
+ Note: Command line argument precedes over environment variable.
+
+
+No command line argument or environment variable. Picking a Random Color =red
+ * Serving Flask app "app" (lazy loading)
+ * Environment: production
+   WARNING: Do not use the development server in a production environment.
+   Use a production WSGI server instead.
+ * Debug mode: off
+ * Running on http://0.0.0.0:80/ (Press CTRL+C to quit)
+
+-----
+[root@master ~]# git clone https://github.com/gauravkumar9130/grafana
+Cloning into 'grafana'...
+remote: Enumerating objects: 21, done.
+remote: Total 21 (delta 0), reused 0 (delta 0), pack-reused 21
+Unpacking objects: 100% (21/21), done.
+[root@master ~]# cd grafana/
+[root@master grafana]# ls
+1-prometheus  2-grafana
+
+[root@master grafana]# kubectl create -f 1-prometheus/.
+clusterrolebinding.rbac.authorization.k8s.io/kube-state-metrics created
+clusterrole.rbac.authorization.k8s.io/kube-state-metrics created
+deployment.apps/kube-state-metrics created
+namespace/monitoring created
+clusterrole.rbac.authorization.k8s.io/prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/prometheus created
+configmap/prometheus-server-conf created
+deployment.apps/prometheus-deployment created
+service/prometheus-service created
+serviceaccount/kube-state-metrics created
+service/kube-state-metrics created
+
+[root@master grafana]# kubectl get all -n monitoring
+NAME                                         READY   STATUS    RESTARTS   AGE
+pod/prometheus-deployment-588ff6c558-r2gmc   1/1     Running   0          3m41s
+
+NAME                         TYPE        CLUSTER-IP      EXTERNAL-IP   PORT(S)    AGE
+service/prometheus-service   ClusterIP   10.101.139.90   <none>        8080/TCP   3m41s
+
+NAME                                    READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/prometheus-deployment   1/1     1            1           3m41s
+
+NAME                                               DESIRED   CURRENT   READY   AGE
+replicaset.apps/prometheus-deployment-588ff6c558   1         1         1       3m41s
+-------------------
+grafana
+[root@master grafana]# kubectl create -f 2-grafana/.
+deployment.apps/grafana created
+configmap/grafana-datasources created
+service/grafana created
+
+If grafana doesn't load
+yum update firefox on both worker nodes
+
+[root@master grafana]# kubectl delete -f 2-grafana/.
+deployment.apps "grafana" deleted
+configmap "grafana-datasources" deleted
+service "grafana" deleted
+[root@master grafana]# kubectl create -f 2-grafana/.
+deployment.apps/grafana created
+configmap/grafana-datasources created
+service/grafana created
+
+if prometheus doesn't load
+kubectl rollout restart deployment prometheus-deployment -n monitoring
+
+kubectl delete -f 1-prometheus/.
+kubectl create -f 1-prometheus/.
+
+metric server
+[root@master grafana]# cd
+[root@master ~]# 
+[root@master ~]# git clone https://github.com/gauravkumar9130/metrics-server.git
+Cloning into 'metrics-server'...
+remote: Enumerating objects: 14, done.
+remote: Counting objects: 100% (14/14), done.
+remote: Compressing objects: 100% (12/12), done.
+remote: Total 14 (delta 5), reused 10 (delta 1), pack-reused 0
+Unpacking objects: 100% (14/14), done.
+[root@master ~]# cd metrics-server/
+[root@master metrics-server]# ls
+aggregated-metrics-reader.yaml  auth-reader.yaml         metrics-server-deployment.yaml  README.md
+auth-delegator.yaml             metrics-apiservice.yaml  metrics-server-service.yaml     resource-reader.yaml
+[root@master metrics-server]# kubectl create -f .
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader created
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+serviceaccount/metrics-server created
+deployment.apps/metrics-server created
+service/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+
+If metric-server doesn't load
+ctl edit deployment.apps/metrics-server kube-n kube-system
+open metric-server deployment under kube-system namespace and add one line under spec in template
+kubectl edit deployment.apps/metrics-server -n kube-system
+
+hostNetwork: true
+
+restart deployment
+kubectl rollout restart deployment metric-server -n kubesystem
+
+verification
+[root@master metrics-server]# kubectl top node
+NAME      CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+master    650m         8%     2734Mi          17%       
+worker1   179m         2%     2775Mi          17%       
+worker2   233m         2%     4217Mi          26%       
+[root@master metrics-server]# kubectl top pod
+NAME                                  CPU(cores)   MEMORY(bytes)   
+blue-version-6fcc967f99-2njq2         1m           16Mi            
+blue-version-6fcc967f99-5trht         1m           16Mi            
+blue-version-6fcc967f99-b4zt9         1m           16Mi            
+blue-version-6fcc967f99-h5bz4         1m           16Mi            
+blue-version-6fcc967f99-p9tv9         1m           16Mi            
+config-pod                            0m           1Mi             
+deployment-example-8665d9bf97-78hcs   1m           16Mi            
+deployment-example-8665d9bf97-pdh9w   1m           16Mi            
+deployment-example-8665d9bf97-rl6nv   1m           16Mi            
+deployment-example-8665d9bf97-vpxk4   1m           16Mi            
+deployment-example-8665d9bf97-whg5h   1m           20Mi            
+green-version-65b6c4c55d-6znbk        1m           16Mi            
+green-version-65b6c4c55d-chgzb        1m           16Mi            
+green-version-65b6c4c55d-n2swq        1m           16Mi            
+nginx-pod                             1m           16Mi            
+pod-configmap                         2m           399Mi           
+pod-emptydir                          0m           1Mi             
+pod-plainkey                          2m           438Mi           
+pod-sa                                0m           1Mi             
+pod-secret                            2m           395Mi           
+pod-securitycontext                   0m           1Mi             
+podwithlabel                          1m           20Mi            
+podwithpvc                            0m           1Mi             
+rc-example-9l2rl                      1m           16Mi            
+rc-example-n27wh                      1m           16Mi            
+rc-example-rxxtj                      1m           16Mi            
+rs-example-mxh7d                      1m           16Mi            
+rs-example-pk6lf                      1m           16Mi            
+rs-example-qtbj7                      1m           16Mi            
+rs-webapp-bkq4m                       1m           16Mi            
+rs-webapp-kbl8m                       1m           16Mi            
+rs-webapp-r2vst                       1m           16Mi            
+rs-webapp-xztsm                       1m           16Mi            
+rs-webapp-zqq9v                       1m           16Mi            
+test-pod                              0m           0Mi             
+worker1-pod                           1m           16Mi           
+-----------------------
+Day 11
+networking
+[root@master scripts]# kubectl run web --image=quay.io/gauravkumar9130/nginxdemo -l app=web
+pod/web created
+[root@master scripts]# kubectl run db --image=quay.io/gauravkumar9130/nginxdemo -l app=db
+pod/db created
+[root@master scripts]# kubectl run test --image=quay.io/gauravkumar9130/nginxdemo -l app=test
+pod/test created
+----------
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+-----------
+np-denyall.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+ name: denypolicy
+spec:
+ #2 actions
+ #first action -> select the pods by matching labels
+ #second action -> apply the rules on selected pods
+ podSelector:
+  matchLabels:
+   app: db
+ policyTypes:
+ - Ingress  
+ -------
+ np-db.yaml
+ apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+ name: dbpolicy
+spec:   
+ #2 actions
+ #first action -> select the pods by matching labels
+ #second action -> apply the rules on selected pods
+ podSelector:
+  matchLabels:
+   app: db
+ policyTypes:
+ - Ingress
+ ingress:
+ - from:
+   - podSelector:
+      matchLabels:
+       app: web  
+-------
+np-port-db.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+ name: portdbpolicy
+spec: 
+ #2 actions
+ #first action -> select the pods by matching labels
+ #second action -> apply the rules on selected pods
+ podSelector:
+  matchLabels:
+   app: db
+ policyTypes:
+ - Ingress
+ ingress:
+ - from:
+   - podSelector:
+      matchLabels:
+       app: web
+   ports:
+   - protocol: TCP
+     port: 3306           
+     ----
+     [root@master ~]# wget https://raw.githubusercontent.com/metallb/metallb/v0.9.5/manifests/namespace.yaml
+--2022-11-22 16:49:42--  https://raw.githubusercontent.com/metallb/metallb/v0.9.5/manifests/namespace.yaml
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 185.199.108.133, 185.199.109.133, 185.199.110.133, ...
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|185.199.108.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 91 [text/plain]
+Saving to: ‘namespace.yaml’
+
+100%[================================================================================================>] 91          --.-K/s   in 0s      
+
+2022-11-22 16:49:43 (4.83 MB/s) - ‘namespace.yaml’ saved [91/91]
+
+[root@master ~]# wget https://raw.githubusercontent.com/metallb/metallb/v0.9.5/manifests/metallb.yaml
+--2022-11-22 16:51:08--  https://raw.githubusercontent.com/metallb/metallb/v0.9.5/manifests/metallb.yaml
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 185.199.108.133, 185.199.109.133, 185.199.110.133, ...
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|185.199.108.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 7517 (7.3K) [text/plain]
+Saving to: ‘metallb.yaml’
+
+100%[================================================================================================>] 7,517       --.-K/s   in 0s      
+
+2022-11-22 16:51:09 (59.9 MB/s) - ‘metallb.yaml’ saved [7517/7517]
+
+[root@master ~]# kubectl apply -f namespace.yaml 
+namespace/metallb-system created
+[root@master ~]# kubectl apply -f metallb.yaml 
+serviceaccount/controller created
+serviceaccount/speaker created
+clusterrole.rbac.authorization.k8s.io/metallb-system:controller created
+clusterrole.rbac.authorization.k8s.io/metallb-system:speaker created
+role.rbac.authorization.k8s.io/config-watcher created
+role.rbac.authorization.k8s.io/pod-lister created
+clusterrolebinding.rbac.authorization.k8s.io/metallb-system:controller created
+clusterrolebinding.rbac.authorization.k8s.io/metallb-system:speaker created
+rolebinding.rbac.authorization.k8s.io/config-watcher created
+rolebinding.rbac.authorization.k8s.io/pod-lister created
+daemonset.apps/speaker created
+deployment.apps/controller created
+resource mapping not found for name: "controller" namespace: "metallb-system" from "metallb.yaml": no matches for kind "PodSecurityPolicy" in version "policy/v1beta1"
+ensure CRDs are installed first
+resource mapping not found for name: "speaker" namespace: "metallb-system" from "metallb.yaml": no matches for kind "PodSecurityPolicy" in version "policy/v1beta1"
+ensure CRDs are installed first
+
+create secret
+[root@master ~]# kubectl create secret generic -n metallb-system memberlist --from-literal=secrekey="$(openssl rand -base64 128)"
+secret/memberlist created 
+
+[root@master ~]# kubectl delete secret memberlist -n metallb-system 
+secret "memberlist" deleted
+[root@master ~]# kubectl create secret generic -n metallb-system memberlist --from-literal=secretkey="$(openssl rand -base64 128)"
+secret/memberlist created
+
+configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+ name: config
+ namespace: metallb-system
+data:
+ config: |
+  address-pools:
+  - name: default
+    protocol: layer2                                                                                                                      
+    addresses:
+    - 172.25.230.20-172.25.230.30
+pod-dns.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: pod-dns
+spec:
+ containers:
+ - name: test
+   image: quay.io/gauravkumar9130/nginxdemo
+ dnsPolicy: "None" #dns setttings are not inherited
+ dnsConfig:
+  nameservers:
+  - 172.25.250.254
+  searches:
+  - koenig-cloud.com
+  options:
+  - name: ndots
+    value: "5"                                                                                                                            
+  - name: edns0
+
+[root@master ~]# kubectl exec -it pod-dns -- sh
+/ # cat /etc/resolv.conf 
+search koenig-cloud.com
+nameserver 172.25.250.254
+options ndots:5 edns0
+/ # exit
+--------------------------
+Ingress
+[root@master ~]# wget https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.1/deploy/static/provider/baremetal/deploy.yaml
+--2022-11-22 18:24:24--  https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.1.1/deploy/static/provider/baremetal/deploy.yaml
+Resolving raw.githubusercontent.com (raw.githubusercontent.com)... 185.199.108.133, 185.199.109.133, 185.199.110.133, ...
+Connecting to raw.githubusercontent.com (raw.githubusercontent.com)|185.199.108.133|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: 19190 (19K) [text/plain]
+Saving to: ‘deploy.yaml’
+
+100%[================================================================================================>] 19,190      --.-K/s   in 0.006s  
+
+2022-11-22 18:24:25 (3.26 MB/s) - ‘deploy.yaml’ saved [19190/19190]
+
+[root@master ~]# kubectl apply -f deploy.yaml 
+namespace/ingress-nginx created
+serviceaccount/ingress-nginx created
+configmap/ingress-nginx-controller created
+clusterrole.rbac.authorization.k8s.io/ingress-nginx created
+clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx created
+role.rbac.authorization.k8s.io/ingress-nginx created
+rolebinding.rbac.authorization.k8s.io/ingress-nginx created
+service/ingress-nginx-controller-admission created
+service/ingress-nginx-controller created
+deployment.apps/ingress-nginx-controller created
+ingressclass.networking.k8s.io/nginx created
+validatingwebhookconfiguration.admissionregistration.k8s.io/ingress-nginx-admission created
+serviceaccount/ingress-nginx-admission created
+clusterrole.rbac.authorization.k8s.io/ingress-nginx-admission created
+clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+role.rbac.authorization.k8s.io/ingress-nginx-admission created
+rolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+job.batch/ingress-nginx-admission-create created
+job.batch/ingress-nginx-admission-patch created
+
+[root@master ~]# kubectl delete -A ValidatingWebhookConfiguration ingress-nginx-admission
+validatingwebhookconfiguration.admissionregistration.k8s.io "ingress-nginx-admission" deleted
+
+-----------------
+ingress deployment
+[root@master scripts]# kubectl create deployment hotel --image=quay.io/gauravkumar9130/hotel --replicas=3
+deployment.apps/hotel created
+[root@master scripts]# kubectl create deployment tea --image=quay.io/gauravkumar9130/tea --replicas=3
+deployment.apps/tea created
+[root@master scripts]# kubectl create deployment coffee --image=quay.io/gauravkumar9130/coffee --replicas=3
+deployment.apps/coffee created
+[root@master scripts]# kubectl expose deployment hotel --target-port=80 --port=80
+service/hotel exposed
+[root@master scripts]# kubectl expose deployment tea --target-port=80 --port=80
+service/tea exposed
+[root@master scripts]# kubectl expose deployment coffee --target-port=80 --port=80
+service/coffee exposed
+-----
+
+
+nginx-rule.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+ name: hotel-ingress
+ annotations: #similar to label and not used for filtering
+  kubernetes.io/ingress.class: nginx
+spec:
+ rules:
+ - host: "myapp.com"
+   http:
+    paths:
+    - path: /
+      pathType: Prefix
+      backend:
+       service:
+        name: hotel
+        port:
+         number: 80
+    - path: /tea       
+      pathType: Prefix
+      backend:      
+       service:     
+        name: tea
+        port:       
+         number: 80
+    - path: /coffee       
+      pathType: Prefix
+      backend:      
+       service:     
+        name: coffee 
+        port:       
+         number: 80  
+         
+------
+[root@master scripts]# curl myapp.com:32468
+Welcome to Hotel Application
+[root@master scripts]# 
+[root@master scripts]# curl myapp.com:32468/
+Welcome to Hotel Application[root@master scripts]# curl myapp.com:32468/hotel
+Welcome to Hotel Application[root@master scripts]# curl myapp.com:32468/tea
+Welcome to Tea Application[root@master scripts]# curl myapp.com:32468/coffee
+Welcome to Coffee Application
+--------
+HELM installation
+*curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+---------------------------------
+dashboard installation
+[root@master ~]# kubectl create clusterrolebinding dashboard-admin -n default --clusterrole=cluster-admin --serviceaccount=default:kubernetes-dashboard
+clusterrolebinding.rbac.authorization.k8s.io/dashboard-admin created
+[root@master ~]# helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/
+"kubernetes-dashboard" has been added to your repositories
+[root@master ~]# helm install kubernetes-dashboard kubernetes-dashboard/kubernetes-dashboard
+NAME: kubernetes-dashboard
+LAST DEPLOYED: Tue Nov 22 21:46:59 2022
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+*********************************************************************************
+*** PLEASE BE PATIENT: kubernetes-dashboard may take a few minutes to install ***
+*********************************************************************************
+
+Get the Kubernetes Dashboard URL by running:
+  export POD_NAME=$(kubectl get pods -n default -l "app.kubernetes.io/name=kubernetes-dashboard,app.kubernetes.io/instance=kubernetes-dashboard" -o jsonpath="{.items[0].metadata.name}")
+  echo https://127.0.0.1:8443/
+  kubectl -n default port-forward $POD_NAME 8443:8443
+
+[root@master ~]# helm delete kubernetes-dashboard
+release "kubernetes-dashboard" uninstalled
+-------------------------
+helm
+[root@master ~]# mkdir helm
+[root@master ~]# cd helm
+[root@master helm]# helm create myapp
+Creating myapp
+[root@master helm]# ls
+myapp
+[root@master helm]# ls myapp/
+charts  Chart.yaml  templates  values.yaml
+
+Chart.yaml
+apiVersion: v2 #required 
+name: myapp #required    
+description: A deployment using helm
+type: application        
+version: 0.1.0 #required                                                                                                                  
+appVersion: "1.0" 
+
+[root@master helm]# cd myapp/
+[root@master myapp]# vim values.yaml 
+[root@master myapp]# cd templates/
+[root@master templates]# vim deployment.yaml 
+[root@master templates]# cd ..
+[root@master myapp]# cd ..
+[root@master helm]# ls
+myapp
+[root@master helm]# helm template myapp
+---
+[root@master helm]# helm lint myapp/
+==> Linting myapp/
+[INFO] Chart.yaml: icon is recommended
+
+1 chart(s) linted, 0 chart(s) failed
+-----
+[root@master helm]# helm install sai myapp
+NAME: sai
+LAST DEPLOYED: Wed Nov 23 16:09:23 2022
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=myapp,app.kubernetes.io/instance=sai" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace default port-forward $POD_NAME 8080:$CONTAINER_PORT
+-------
+[root@master helm]# helm list
+NAME    NAMESPACE    REVISION    UPDATED                                    STATUS      CHART          APP VERSION
+sai     default      1           2022-11-23 16:09:23.442843356 +0530 IST    deployed    myapp-0.1.0    1.0  
+
+upgrading chart
+[root@master helm]# cd myapp/
+[root@master myapp]# vim values.yaml 
+[root@master myapp]# #changed image version in values.yaml to production:v2
+[root@master myapp]# cd ..
+[root@master helm]# vim myapp/Chart.yaml 
+[root@master helm]# #changed chart version to 0.1.1
+[root@master helm]# helm upgrade sai myapp/
+Release "sai" has been upgraded. Happy Helming!
+NAME: sai
+LAST DEPLOYED: Wed Nov 23 16:53:55 2022
+NAMESPACE: default
+STATUS: deployed
+REVISION: 2
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=myapp,app.kubernetes.io/instance=sai" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace default port-forward $POD_NAME 8080:$CONTAINER_PORT
+[root@master helm]# helm history sai
+REVISION    UPDATED                     STATUS        CHART          APP VERSION    DESCRIPTION     
+1           Wed Nov 23 16:09:23 2022    superseded    myapp-0.1.0    1.0            Install complete
+2           Wed Nov 23 16:53:55 2022    deployed      myapp-0.1.1    1.0            Upgrade complete
+
+downgrading helm chart 
+[root@master helm]# helm rollback sai 1
+Rollback was a success! Happy Helming!
+[root@master helm]# helm history sai
+REVISION    UPDATED                     STATUS        CHART          APP VERSION    DESCRIPTION     
+1           Wed Nov 23 16:09:23 2022    superseded    myapp-0.1.0    1.0            Install complete
+2           Wed Nov 23 16:53:55 2022    superseded    myapp-0.1.1    1.0            Upgrade complete
+3           Wed Nov 23 17:17:35 2022    deployed      myapp-0.1.0    1.0            Rollback to 1   
+[root@master helm]# helm status sai
+NAME: sai
+LAST DEPLOYED: Wed Nov 23 17:17:35 2022
+NAMESPACE: default
+STATUS: deployed
+REVISION: 3
+NOTES:
+1. Get the application URL by running these commands:
+  export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/name=myapp,app.kubernetes.io/instance=sai" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace default $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace default port-forward $POD_NAME 8080:$CONTAINER_PORT
+
+Cluster maintenance
+Upgrade OS
+[root@master helm]# kubectl drain worker1 --force --ignore-daemonsets --delete-emptydir-data
+----Upgrade OS------
+[root@master helm]# kubectl uncordon worker1
+
+Upgrade cluster
+upgrade kubelet, kubectl and kubeadm
+[root@master helm]# kubectl drain worker1 --force --ignore-daemonsets --delete-emptydir-data
+[root@master helm]# #yum upgrade kubeadm-1.25.x kubectl-1.25.x kubelet-1.25.x -y
+[root@master helm]# #systemctl daemon-reload
+[root@master helm]# #systemctl restart kubelet
+[root@master helm]# #kubectl uncordon worker1
+[root@master helm]# kubectl uncordon worker1
+
+Control plane upgrade
+[root@master helm]# kubeadm upgrade plan
+[upgrade/config] Making sure the configuration is correct:
+[upgrade/config] Reading configuration from the cluster...
+[upgrade/config] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -o yaml'
+[preflight] Running pre-flight checks.
+[upgrade] Running cluster health checks
+[upgrade] Fetching available versions to upgrade to
+[upgrade/versions] Cluster version: v1.25.4
+[upgrade/versions] kubeadm version: v1.25.4
+[upgrade/versions] Target version: v1.25.4
+[upgrade/versions] Latest version in the v1.25 series: v1.25.4
+
+[root@master helm]# kubeadm upgrade apply v1.25.4
+
+------
+static pod (preferably worker node /etc/kubernetes/manifests)
+[root@worker1 ~]# cd /etc/kubernetes/manifests/
+[root@worker1 manifests]# ls
+
+staticpod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+ name: staticpod
+spec:
+ containers:
+ - name: c1
+   image: quay.io/gauravkumar9130/nginxdemo 
+      ---------
+ETCD backup
+
+kubectl create ns test-ns      
+      [root@master ~]# kubectl run sample-pod --image=quay.io/gauravkumar9130/production:v1 -n test-ns
+pod/sample-pod created
+[root@master ~]# kubectl get pods -n test-ns
+NAME         READY   STATUS    RESTARTS   AGE
+sample-pod   1/1     Running   0          9s
+
+create backup
+ETCDCTL_API=3 etcdctl --endpoints https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key snapshot save etcdbackup.db
+
+delete some resource
+[root@master ~]# kubectl delete namespace test-ns
+namespace "test-ns" deleted
+^C[root@master ~]# kubectl get ns test-ns -o json > test-ns.json
+[root@master ~]# vim test-ns.json 
+[root@master ~]# kubectl replace --raw "/api/v1/namespaces/test-ns/finalize" -f ./test-ns.json 
+{"kind":"Namespace","apiVersion":"v1","metadata":{"name":"test-ns","uid":"81335db8-6328-49a9-b73c-b9f5720b81c7","resourceVersion":"883802","creationTimestamp":"2022-11-21T10:29:21Z","deletionTimestamp":"2022-11-23T15:14:38Z","labels":{"kubernetes.io/metadata.name":"test-ns"},"managedFields":[{"manager":"kubectl-create","operation":"Update","apiVersion":"v1","time":"2022-11-21T10:29:21Z","fieldsType":"FieldsV1","fieldsV1":{"f:metadata":{"f:labels":{".":{},"f:kubernetes.io/metadata.name":{}}}}},{"manager":"kube-controller-manager","operation":"Update","apiVersion":"v1","time":"2022-11-23T15:15:25Z","fieldsType":"FieldsV1","fieldsV1":{"f:status":{"f:conditions":{".":{},"k:{\"type\":\"NamespaceContentRemaining\"}":{".":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{},"f:type":{}},"k:{\"type\":\"NamespaceDeletionContentFailure\"}":{".":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{},"f:type":{}},"k:{\"type\":\"NamespaceDeletionDiscoveryFailure\"}":{".":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{},"f:type":{}},"k:{\"type\":\"NamespaceDeletionGroupVersionParsingFailure\"}":{".":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{},"f:type":{}},"k:{\"type\":\"NamespaceFinalizersRemaining\"}":{".":{},"f:lastTransitionTime":{},"f:message":{},"f:reason":{},"f:status":{},"f:type":{}}}}},"subresource":"status"}]},"spec":{},"status":{"phase":"Terminating","conditions":[{"type":"NamespaceDeletionDiscoveryFailure","status":"True","lastTransitionTime":"2022-11-23T15:14:43Z","reason":"DiscoveryFailed","message":"Discovery failed for some groups, 1 failing: unable to retrieve the complete list of server APIs: metrics.k8s.io/v1beta1: an error on the server (\"Internal Server Error: \\\"/apis/metrics.k8s.io/v1beta1\\\": the server could not find the requested resource\") has prevented the request from succeeding"},{"type":"NamespaceDeletionGroupVersionParsingFailure","status":"False","lastTransit
+ionTime":"2022-11-23T15:14:43Z","reason":"ParsedGroupVersions","message":"All legacy kube types successfully parsed"},{"type":"NamespaceDeletionContentFailure","status":"False","lastTransitionTime":"2022-11-23T15:14:43Z","reason":"ContentDeleted","message":"All content successfully deleted, may be waiting on finalization"},{"type":"NamespaceContentRemaining","status":"False","lastTransitionTime":"2022-11-23T15:15:25Z","reason":"ContentRemoved","message":"All content successfully removed"},{"type":"NamespaceFinalizersRemaining","status":"False","lastTransitionTime":"2022-11-23T15:14:43Z","reason":"ContentHasNoFinalizers","message":"All content-preserving finalizers finished"}]}}
+
+restore etcd
+[root@master ~]# ETCDCTL_API=3 etcdctl --endpoints https://127.0.0.1:2379 --cacert=/etc/kubernetes/pki/etcd/ca.crt --cert=/etc/kubernetes/pki/etcd/server.crt --key=/etc/kubernetes/pki/etcd/server.key snapshot restore etcdbackup.db
+2022-11-23 20:57:16.951307 I | mvcc: restore compact to 882267
+2022-11-23 20:57:16.960866 I | etcdserver/membership: added member 8e9e05c52164694d [http://localhost:2380] to cluster cdf818194e3a8c32
+
+[root@master ~]# ls /var/lib/etcd/
+member
+[root@master ~]# rm -rf /var/lib/etcd/member/
+[root@master ~]# ls /var/lib/etcd/
+[root@master ~]# ls /var/lib/etcd/
+member
+[root@master ~]# rm -rf /var/lib/etcd/*
+[root@master ~]# ls /var/lib/etcd/
+
+[root@master ~]# cd default.etcd/
+[root@master default.etcd]# ls
+member
+[root@master default.etcd]# mv member/ /var/lib/etcd/
+mv: overwrite ‘/var/lib/etcd/member’? n
+[root@master default.etcd]# mv member/ /var/lib/etcd/
+[root@master default.etcd]# 
+reboot machine
+------------------------
+Cronjob
+[root@master scripts]# cat cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+ name: cronjob
+spec:
+ schedule: "*/3 * * * *"
+ jobTemplate:
+  spec:
+   template:
+    spec:
+     containers:
+     - name: cronpod
+       image: quay.io/gauravkumar9130/busybox
+       command: ["/bin/sh"]
+       args: ["-c","date; echo hello from busybox"]
+     restartPolicy: OnFailure
+[root@master scripts]# kubectl create -f cronjob.yaml 
+cronjob.batch/cronjob created
+[root@master scripts]# kubectl get cronjob
+NAME      SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+cronjob   */3 * * * *   False     0        <none>          12s
+[root@master scripts]# kubectl get jobs
+NAME               COMPLETIONS   DURATION   AGE
+cronjob-27820344   0/1           0s         0s
+
+
+cluster troubleshooting
+On master node
+check /etc/kubernetes/manifests/
+kubectl get nodes
+kubectl describe node/nodename
+
+on worker nodes
+systemctl status crio
+systemctl status kubelet
+
+-------------------------------------------------
+
